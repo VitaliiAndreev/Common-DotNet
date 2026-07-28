@@ -218,10 +218,28 @@ out. The `runner` input sits above it only for one-off runs - e.g.
 manually dispatching against a hosted runner to reproduce a consumer's
 environment, without touching the variable.
 
-**Runner requirements:** the toolchain comes from a different place
-depending on where the job lands, decided at runtime by
-`runner.environment` (which GitHub reports as `github-hosted` or
-`self-hosted`), not by the runner label:
+**Runner requirements:** every composite action in this workflow declares
+`shell: pwsh`, so **PowerShell (`pwsh`) is a prerequisite of the workflow
+itself on every runner**, hosted or not - it is not part of the .NET
+toolchain the `runner.environment` split below governs. GitHub-hosted
+images ship it. A self-hosted image must bake it in; without it the job
+dies at the first composite that runs a shell with a bare
+`pwsh: command not found`, and no `assert-*` preflight below can report
+anything better because those are themselves PowerShell.
+
+That is why the job's first step is `assert-pwsh`, a bash-shelled check
+that exists purely to turn that failure into a sentence. It is **not** one
+of this repo's composites: it lives in
+[Common-PowerShell](https://github.com/Klark-Morrigan/Common-PowerShell/tree/master/.github/actions/assert-pwsh),
+because the prerequisite belongs to PowerShell's domain rather than
+.NET's, and every workflow in this family that writes its steps in `pwsh`
+needs the identical check. This workflow stages that repo into
+`.powershell-common/` - unconditionally, since Common-DotNet keeps no copy
+- and calls it from there.
+
+The .NET toolchain proper comes from a different place depending on where
+the job lands, decided at runtime by `runner.environment` (which GitHub
+reports as `github-hosted` or `self-hosted`), not by the runner label:
 - **Self-hosted:** the .NET SDK *and* the ReportGenerator global tool
   (`dotnet tool install -g dotnet-reportgenerator-globaltool`) are
   expected to be pre-baked into the runner image (how the pool is
