@@ -34,6 +34,13 @@ name: ci-dotnet
 # self branch points at the consumer's own workspace, so PRs to this
 # repo exercise the PR's own composite code end-to-end.
 #
+# One composite is staged from a different repo: `assert-pwsh` lives in
+# Common-PowerShell, because the PowerShell interpreter is a prerequisite
+# of this workflow rather than part of the .NET toolchain, and every
+# workflow in this family that writes its steps in pwsh needs the same
+# check. That staging is UNCONDITIONAL - this repo hosts no copy, so its
+# own runs need it too - and gives `.powershell-common/`.
+#
 # Dual runner support, split across two independent signals:
 #
 #   1. WHICH machine - `runs-on` precedence: the `runner` input override
@@ -173,6 +180,39 @@ jobs:
           path: .common-dotnet
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
+
+      # PowerShell itself is a prerequisite of this workflow, not part of
+      # the .NET toolchain, so the check that asserts it is owned by
+      # Common-PowerShell - the repo whose domain PowerShell is - and
+      # staged here rather than duplicated. Unconditional, unlike the
+      # `.common-dotnet` staging above: the assert is needed on this
+      # repo's own runs too, since Common-DotNet does not host a copy.
+      - name: Stage Common-PowerShell composites
+        uses: actions/checkout@v5
+        with:
+          repository: Klark-Morrigan/Common-PowerShell
+          ref: master
+          path: .powershell-common
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      # First step that runs a shell, and deliberately the only one that
+      # is not `shell: pwsh`. Every composite below needs the PowerShell
+      # interpreter, so a runner without it fails at whichever composite
+      # happens to run first with a bare `pwsh: command not found` - an
+      # error naming no cause. The assert-* preflights further down cannot
+      # cover this case, because they are themselves PowerShell and would
+      # not run either. A bash-shelled check placed ahead of everything is
+      # the only thing that can turn that into a diagnosis, so it goes
+      # here rather than beside its sibling asserts.
+      #
+      # No self/consumer pair: the action has one home, so both paths
+      # resolve to the staged copy.
+      #
+      # Ungated on runner.environment: GitHub-hosted images ship pwsh, so
+      # the check is a fast no-op there rather than a branch to maintain.
+      - name: assert-pwsh
+        uses: ./.powershell-common/.github/actions/assert-pwsh
 
       # Self-hosted only: this clears artifacts left in the persistent
       # _work/ dir by a prior job. GitHub-hosted runners get a fresh VM
